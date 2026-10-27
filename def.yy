@@ -15,7 +15,7 @@ extern "C" int yyerror(const char *msg, ...);
     int	ival;
     float fval;
 };
-%type <text> wyr
+%type <text> expression
 %token <text> ID
 %token <ival> LC
 %token ENDLINE
@@ -26,35 +26,35 @@ extern "C" int yyerror(const char *msg, ...);
 %start program
 %%
 program
-    : instrukcje
+    : instructions
     // |program ENDLINE
     |
     ;
-instrukcje
-    : instrukcje instrukcja
-    | instrukcja 
+instructions
+    : instructions instruction
+    | instruction 
     ;
-instrukcja
-    : wyr ENDLINE
-    | przypisanie ENDLINE
+instruction
+    : expression ENDLINE
+    | assignment ENDLINE
     ;
-wyr
-	:wyr '+' skladnik	{printf("wyrazenie z + \n");}
-	|wyr '-' skladnik	{printf("wyrazenie z - \n");}
-	|skladnik		{printf("wyrazenie pojedyncze \n");}
+expression
+	:expression '+' addend	{printf("wyrazenie z + \n");}
+	|expression '-' addend	{printf("wyrazenie z - \n");}
+	|addend		{printf("wyrazenie pojedyncze \n");}
 	;
-skladnik
-	:skladnik '*' czynnik	{printf("skladnik z * \n");}
-	|skladnik '/' czynnik	{printf("skladnik z / \n");}
-	|czynnik		{printf("skladnik pojedynczy \n");}
+addend
+	:addend '*' factor	{printf("skladnik z * \n");}
+	|addend '/' factor	{printf("skladnik z / \n");}
+	|factor		{printf("skladnik pojedynczy \n");}
 	;
-czynnik
+factor
 	:ID			{printf("czynnik znakowy, %s\n", $1);} 
 	|LC			{printf("czynnik liczbowy, %d\n", $1);}
-	|'(' wyr ')'		{printf("wyrazenie w nawiasach\n");}
+	|'(' expression ')'		{printf("wyrazenie w nawiasach\n");}
 	;
-przypisanie
-    : ID '=' wyr {printf("przypisanie\n");}
+assignment
+    : ID '=' expression {printf("przypisanie\n");}
     ;
 
 %%
