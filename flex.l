@@ -5,37 +5,36 @@
 #define INFILE_ERROR 1
 #define OUTFILE_ERROR 2
 extern int yylineno;
-int yyerror(const char *,...);
+int yyerror(const char *, ...);
 %}
 %%
-\+			{fprintf(yyout, "+\n");return '+';}
-\*			{fprintf(yyout, "*\n");return '*';}
-\(			{fprintf(yyout, "(\n");return '(';}
-\)			{fprintf(yyout, ")\n");return ')';}
-\/			{fprintf(yyout, "/\n");return '/';}
-\-			{fprintf(yyout, "-\n");return '-';}
-\^			{fprintf(yyout, "^\n");return '^';}
-\=			{fprintf(yyout, "=\n");
-			 return '=';
-}
+\+			{fprintf(yyout, "flex: +\n");return '+';}
+\*			{fprintf(yyout, "flex: *\n");return '*';}
+\(			{fprintf(yyout, "flex: (\n");return '(';}
+\)			{fprintf(yyout, "flex: )\n");return ')';}
+\/			{fprintf(yyout, "flex: /\n");return '/';}
+\-			{fprintf(yyout, "flex: -\n");return '-';}
+\^			{fprintf(yyout, "flex: ^\n");return '^';}
+\=			{fprintf(yyout, "flex: =\n");
+			 return '=';}
 ";"       {return ENDLINE;}
 [1-9][0-9]*		{
-				fprintf(yyout, "liczba\n");
+				fprintf(yyout, "flex: liczba\n");
 				yylval.ival = atoi(yytext);
-				return LC;
+				return NUM;
 			}	
 [A-Za-z_][A-Za-z0-9_]*	{
-				fprintf(yyout, "nazwa\n");
+				fprintf(yyout, "flex: nazwa\n");
 				yylval.text = strdup(yytext);
 				return ID;
 			}
-[1-9]+[.]{2}		{fprintf(yyout, "dziwne\n");}
+[1-9]+[.]{2}		{fprintf(yyout, "flex: dziwne\n");}
 \ |\t|\r			{;}
 \n			{
     yylineno++;
     // return '\n';
 }
-.			{yyerror("Blad leksykalny\n");}
+.			{yyerror("flex: Blad leksykalny\n");}
 %%
 int yyerror(const char *msg,...)
 {
