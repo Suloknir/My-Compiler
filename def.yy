@@ -169,19 +169,19 @@ assignment
 int main(int argc, char *argv[])
 {
 	yyparse();
-    std::ofstream OutFile("a.out");
+    std::ofstream outFile("a.out");
 
-    OutFile << ".data\n";
+    outFile << ".data\n";
     for (auto &[name, symbol] : symbols)
     {
         //todo: check if float, then change word to sth else
-        OutFile << "\t" << name << ":\t.word 0\n";
+        outFile << "\t" << name << ":\t.word 0\n";
     }
 
-    OutFile << ".text\n";
+    outFile << ".text\n";
     for (auto &line : code)
-        OutFile << "\t" << line << "\n";
-    
-    OutFile.close();
+        outFile << "\t" << line << "\n";
+    outFile << "\tli  $v0, 10\n\tsyscall\n";
+    outFile.close();
 	return 0;
 }
