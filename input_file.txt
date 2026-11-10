@@ -1,5 +1,6 @@
-a = b + c * 9;
-s = 15 * 5 + 9 - 10 * 3;
-x = (a - 2) / y;
-z + 1;
-w = 5;
+w = 4 + 3 * 2;
+println w;
+read y;
+println y;
+println (7 + 1) * 2;
+

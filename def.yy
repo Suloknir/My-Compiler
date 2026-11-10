@@ -102,6 +102,57 @@ void emitTriple(const std::string asmOp)
     std::println("Bison: {} = {} {} {}", result.value, leftArg.value, asmOp, rightArg.value);
 }
 
+void emitPrint(const Operand &op)
+{
+    switch (op.type)
+    {
+        case DataType::INT:
+            loadToRegister(op, "$a0");
+            code.push_back("li $v0, 1");
+            break;
+        case DataType::REAL:
+            code.push_back("l.s $f12, " + op.value);
+            code.push_back("li $v0, 2");
+            break;
+        case DataType::STRING:
+            code.push_back("la $a0, " + op.value);
+            code.push_back("li $v0, 4");
+            break;
+    }
+    code.push_back("syscall");
+}
+
+void emitPrintln(const Operand &op)
+{
+    emitPrint(op);
+    code.push_back("li $a0, 10");
+    code.push_back("li $v0, 11");
+    code.push_back("syscall");
+}
+
+void emitRead(const std::string &name)
+{
+    DataType type = getVariableType(name);
+    switch (type)
+    {
+        case DataType::INT:
+            code.push_back("li $v0, 5");
+            code.push_back("syscall");
+            code.push_back("sw $v0, " + name);
+            break;
+        case DataType::REAL:
+            code.push_back("li $v0, 6");
+            code.push_back("syscall");
+            code.push_back("s.s $f0, " + name);
+            break;
+        case DataType::STRING:
+            std::println("Bison ERR: Read to string is not sopported\n");
+            exit(1);
+            break;
+    }
+}
+
+
 %}
 
 %union 
@@ -114,6 +165,9 @@ void emitTriple(const std::string asmOp)
 %token <text> ID
 %token <ival> NUM
 %token ENDLINE
+%token PRINT
+%token PRINTLN
+%token READ
 %left '+' '-'
 %left '*' '/'
 %right '='
@@ -131,6 +185,7 @@ statement_list
 statement
     : expression ENDLINE { valueStack.pop(); }
     | assignment ENDLINE
+    | command ENDLINE
     ;
 expression
 	:expression '+' term	{ emitTriple("add"); }
@@ -164,13 +219,28 @@ assignment
         free($1);
     }
     ;
+command
+    : PRINT expression {
+        Operand value = valueStack.top();
+        valueStack.pop();
+        emitPrint(value);
+    }
+    | PRINTLN expression {
+        Operand value = valueStack.top();
+        valueStack.pop();
+        emitPrintln(value);
+    }
+    | READ ID {
+        emitRead($2);
+        free($2);
+    }
+    ;
 
 %%
 int main(int argc, char *argv[])
 {
 	yyparse();
     std::ofstream outFile("a.out");
-
     outFile << ".data\n";
     for (auto &[name, symbol] : symbols)
     {
@@ -179,6 +249,7 @@ int main(int argc, char *argv[])
     }
 
     outFile << ".text\n";
+    outFile << "main:\n";
     for (auto &line : code)
         outFile << "\t" << line << "\n";
     outFile << "\tli  $v0, 10\n\tsyscall\n";

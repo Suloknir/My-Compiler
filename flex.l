@@ -22,7 +22,19 @@ int yyerror(const char *, ...);
 				fprintf(yyout, "Flex: liczba\n");
 				yylval.ival = atoi(yytext);
 				return NUM;
-			}	
+			}
+"print"     {
+				fprintf(yyout, "Flex: print\n");
+                return PRINT;
+            }
+"println"     {
+				fprintf(yyout, "Flex: println\n");
+                return PRINTLN;
+            }
+"read"      {
+				fprintf(yyout, "Flex: read\n");
+                return READ;
+            }
 [A-Za-z_][A-Za-z0-9_]*	{
 				fprintf(yyout, "Flex: nazwa\n");
 				yylval.text = strdup(yytext);
