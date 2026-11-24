@@ -35,6 +35,16 @@ int yyerror(const char *, ...);
 				fprintf(yyout, "Flex: read\n");
                 return READ;
             }
+"if"        {return IF;}
+"else"      {return ELSE;}
+"=="        {return EQ;}
+"!="        {return NE;}
+"<="        {return LE;}
+">="        {return GE;}
+"<"         {return '<';}
+">"         {return '>';}
+"{"         {return '{';}
+"}"         {return '}';}
 [A-Za-z_][A-Za-z0-9_]*	{
 				fprintf(yyout, "Flex: nazwa\n");
 				yylval.text = strdup(yytext);

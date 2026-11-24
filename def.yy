@@ -1,158 +1,5 @@
 %{
-#include <print>
-#include <stack>
-#include <map>
-#include <vector>
-#include <fstream>
-#include <string>
-#define INFILE_ERROR 1
-#define OUTFILE_ERROR 2
-
-extern "C" int yylex();
-extern "C" int yyerror(const char *msg, ...);
-
-enum class DataType
-{
-    INT,
-    REAL,
-    STRING,
-};
-
-enum class OperandKind
-{
-    CONSTANT,
-    VARIABLE,
-    TEMPORARY,
-};
-
-struct Symbol
-{
-    DataType type;
-    // size_t arraySize;
-};
-
-struct Operand
-{
-    OperandKind kind;
-    DataType type;
-    std::string value;
-};
-
-std::stack<Operand> valueStack;
-std::map<std::string, Symbol> symbols;
-std::vector<std::string> code;
-
-void addSymbol(const std::string &name, DataType type)
-{
-    symbols.insert({name, Symbol{type}});
-}
-
-DataType getVariableType(const std::string &name)
-{
-    auto it = symbols.find(name);
-    if (it == symbols.end())
-    {
-        //todo 
-        addSymbol(name, DataType::INT);
-        return DataType::INT;
-    }
-    return it->second.type;
-}
-
-std::string newTemp(DataType type)
-{
-    static size_t counter = 1;
-    std::string name = "result" + std::to_string(counter++);
-    addSymbol(name, type);
-    return name;
-}
-
-DataType resultType(const Operand &left, const Operand &right)
-{
-    if (left.type == right.type && left.type != DataType::STRING)
-        return left.type;
-    std::println("Bison ERR: left and right data types have to be the same");
-    exit(1);
-}
-
-void loadToRegister(const Operand &op, const std::string &reg)
-{
-    if (op.kind == OperandKind::CONSTANT)
-        code.push_back("li " + reg + ", " + op.value);
-    else
-        code.push_back("lw " + reg + ", " + op.value);
-}
-
-void emitTriple(const std::string asmOp)
-{
-    Operand rightArg = valueStack.top();
-    valueStack.pop();
-    Operand leftArg = valueStack.top();
-    valueStack.pop();
-    
-    DataType type = resultType(leftArg, rightArg);
-    Operand result{OperandKind::TEMPORARY, type, newTemp(type)};
-    valueStack.push(result);
-
-    loadToRegister(leftArg, "$t0");
-    loadToRegister(rightArg, "$t1");
-    code.push_back(asmOp + " $t0, $t0, $t1");
-    code.push_back("sw $t0, " + result.value);
-
-    std::println("Bison: {} = {} {} {}", result.value, leftArg.value, asmOp, rightArg.value);
-}
-
-void emitPrint(const Operand &op)
-{
-    switch (op.type)
-    {
-        case DataType::INT:
-            loadToRegister(op, "$a0");
-            code.push_back("li $v0, 1");
-            break;
-        case DataType::REAL:
-            code.push_back("l.s $f12, " + op.value);
-            code.push_back("li $v0, 2");
-            break;
-        case DataType::STRING:
-            code.push_back("la $a0, " + op.value);
-            code.push_back("li $v0, 4");
-            break;
-    }
-    code.push_back("syscall");
-}
-
-void emitPrintln(const Operand &op)
-{
-    emitPrint(op);
-    code.push_back("li $a0, 10");
-    code.push_back("li $v0, 11");
-    code.push_back("syscall");
-}
-
-void emitRead(const std::string &name)
-{
-    DataType type = getVariableType(name);
-    switch (type)
-    {
-        case DataType::INT:
-            code.push_back("li $v0, 5");
-            code.push_back("syscall");
-            code.push_back("sw $v0, " + name);
-            break;
-        case DataType::REAL:
-            code.push_back("li $v0, 6");
-            code.push_back("syscall");
-            code.push_back("s.s $f0, " + name);
-            break;
-        case DataType::STRING:
-            std::println("Bison ERR: Read to string is not sopported\n");
-            exit(1);
-            break;
-    }
-}
-
-
+#include "implementation.hpp"
 %}
 
 %union 
@@ -160,6 +7,7 @@ void emitRead(const std::string &name)
     char *text;
     int	ival;
     float fval;
+    const char *branch;
 };
 // %type <text> expression
 %token <text> ID
@@ -168,9 +16,15 @@ void emitRead(const std::string &name)
 %token PRINT
 %token PRINTLN
 %token READ
-%left '+' '-'
+%token IF ELSE
+%token EQ NE LE GE
+%type <branch> condition
+%precedence THEN
+%precedence ELSE
+// %left '+' '-'
 %left '*' '/'
-%right '='
+// %right '='
+
 
 %start program
 %%
@@ -186,6 +40,35 @@ statement
     : expression ENDLINE { valueStack.pop(); }
     | assignment ENDLINE
     | command ENDLINE
+    | if_statement
+    | block
+    ;
+block
+    : '{' statement_list '}'
+    | '{' '}'
+    ;
+if_statement
+    : if_begin statement %prec THEN { emitIfEnd(); }
+    | if_begin statement else_begin statement{ emitIfEnd(); }
+    ;
+if_begin 
+    : IF '(' condition ')' { emitConditionalJump($3); }
+    ;
+else_begin
+    : ELSE { emitElse(); }
+    ;
+condition
+    : expression EQ expression      { $$ = "bne"; }
+    | expression NE expression      { $$ = "beq"; }
+    | expression '<' expression     { $$ = "bge"; }
+    | expression '>' expression     { $$ = "ble"; }
+    | expression LE expression      { $$ = "bgt"; }
+    | expression GE expression      { $$ = "blt"; }
+    | expression
+    {
+        valueStack.push(Operand{OperandKind::CONSTANT, DataType::INT, "0"});
+        $$ = "beq";
+    }
     ;
 expression
 	:expression '+' term	{ emitTriple("add"); }
@@ -220,19 +103,19 @@ assignment
     }
     ;
 command
-    : PRINT expression {
+    : PRINT '(' expression ')' {
         Operand value = valueStack.top();
         valueStack.pop();
         emitPrint(value);
     }
-    | PRINTLN expression {
+    | PRINTLN '(' expression ')' {
         Operand value = valueStack.top();
         valueStack.pop();
         emitPrintln(value);
     }
-    | READ ID {
-        emitRead($2);
-        free($2);
+    | READ '(' ID ')' {
+        emitRead($3);
+        free($3);
     }
     ;
 
@@ -240,7 +123,7 @@ command
 int main(int argc, char *argv[])
 {
 	yyparse();
-    std::ofstream outFile("a.out");
+    std::ofstream outFile("code.asm");
     outFile << ".data\n";
     for (auto &[name, symbol] : symbols)
     {
@@ -251,8 +134,14 @@ int main(int argc, char *argv[])
     outFile << ".text\n";
     outFile << "main:\n";
     for (auto &line : code)
-        outFile << "\t" << line << "\n";
+    {
+        if (line.back() == ':')
+            outFile << line << "\n";
+        else
+            outFile << "\t" << line << "\n";
+    }
     outFile << "\tli  $v0, 10\n\tsyscall\n";
     outFile.close();
+    std::println("Saved to 'code.asm'");
 	return 0;
 }
