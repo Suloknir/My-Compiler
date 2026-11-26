@@ -1,6 +1,0 @@
-w = 4 + 3 * 2;
-println w;
-read y;
-println y;
-println (7 + 1) * 2;
-

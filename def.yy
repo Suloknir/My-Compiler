@@ -6,12 +6,14 @@
 {
     char *text;
     int	ival;
-    float fval;
+    // float fval;
     const char *branch;
 };
 // %type <text> expression
 %token <text> ID
 %token <ival> NUM
+%token <text> REAL_LITERAL;
+%token <text> STRING_LITERAL
 %token ENDLINE
 %token PRINT
 %token PRINTLN
@@ -51,7 +53,7 @@ if_statement
     : if_begin statement %prec THEN { emitIfEnd(); }
     | if_begin statement else_begin statement{ emitIfEnd(); }
     ;
-if_begin 
+if_begin    
     : IF '(' condition ')' { emitConditionalJump($3); }
     ;
 else_begin
@@ -64,8 +66,7 @@ condition
     | expression '>' expression     { $$ = "ble"; }
     | expression LE expression      { $$ = "bgt"; }
     | expression GE expression      { $$ = "blt"; }
-    | expression
-    {
+    | expression {
         valueStack.push(Operand{OperandKind::CONSTANT, DataType::INT, "0"});
         $$ = "beq";
     }
@@ -81,14 +82,23 @@ term
 	|factor
 	;
 factor
-	:ID			{
+	:ID	{
         Operand op{OperandKind::VARIABLE, getVariableType($1), $1};
         valueStack.push(op);
         free($1);
     } 
-	|NUM			{
+	| NUM {
         Operand op{OperandKind::CONSTANT, DataType::INT, std::to_string($1)};
         valueStack.push(op);
+    }
+    | REAL_LITERAL {
+        Operand op{OperandKind::CONSTANT, DataType::REAL, newRealConstant($1)};
+        valueStack.push(op);
+    }
+    | STRING_LITERAL {
+        Operand op{OperandKind::CONSTANT, DataType::STRING, newStringConstant($1)};
+        valueStack.push(op);
+        free($1);
     }
 	|'(' expression ')'
 	;
@@ -96,9 +106,7 @@ assignment
     : ID '=' expression {
         Operand value = valueStack.top();
         valueStack.pop();
-        addSymbol($1, value.type);
-        loadToRegister(value, "$t0");
-        code.push_back("sw $t0, " + std::string($1));
+        emitAssignment($1, value);
         free($1);
     }
     ;
@@ -124,12 +132,7 @@ int main(int argc, char *argv[])
 {
 	yyparse();
     std::ofstream outFile("code.asm");
-    outFile << ".data\n";
-    for (auto &[name, symbol] : symbols)
-    {
-        //todo: check if float, then change word to sth else
-        outFile << "\t" << name << ":\t.word 0\n";
-    }
+    writeDataSection(outFile);
 
     outFile << ".text\n";
     outFile << "main:\n";

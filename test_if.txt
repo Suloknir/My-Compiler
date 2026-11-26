@@ -1,0 +1,17 @@
+w = 4 + 3 * 2;
+y = 10;
+print("Value for y: ");
+read(y);
+print("\n");
+if (y == 0)
+    println("y == 0");
+else if (y == 1)
+    println("y == 1");
+else
+{
+    y = (y + 1) * 10;
+    println("y != 0 && y != 1");
+    print("(y + 1) * 10 = ");
+    println(y);
+}
+println("After else block");

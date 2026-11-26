@@ -30,6 +30,7 @@ enum class OperandKind
 struct Symbol
 {
     DataType type;
+    std::string initialValue;
     // size_t arraySize;
 };
 
@@ -44,6 +45,49 @@ std::stack<Operand> valueStack;
 std::stack<std::string> labelStack;
 std::map<std::string, Symbol> symbols;
 std::vector<std::string> code;
+std::map<std::string, std::string> realConstants; // literal -> name in .data
+
+std::string newStringConstant(const std::string &literal)
+{
+    static size_t counter = 1;
+    std::string name = "str" + std::to_string(counter++);
+    symbols.insert({name, Symbol{DataType::STRING, literal}});
+    return name;
+}
+
+std::string newRealConstant(const std::string &literal)
+{
+    auto it = realConstants.find(literal);
+    if (it != realConstants.end())
+        return it->second;
+
+    static size_t counter = 1;
+    std::string name = "f_var" + std::to_string(counter++);
+    symbols.insert({name, Symbol{DataType::REAL, literal}});
+    realConstants.insert({literal, name});
+    return name;
+}
+
+void writeDataSection(std::ofstream &outFile)
+{
+    outFile << ".data\n";
+    for (auto &[name, symbol] : symbols)
+    {
+        if (symbol.type == DataType::INT)
+            outFile << "\t" << name << ":\t.word 0\n";
+        else if (symbol.type == DataType::REAL)
+        {
+            std::string value = symbol.initialValue.empty() ? "0.0" : symbol.initialValue;
+            outFile << "\t" << name << ":\t.float " << value << "\n";
+
+        }
+    }
+    for (auto &[name, symbol] : symbols)
+    {
+        if (symbol.type == DataType::STRING)
+            outFile << "\t" << name << ":\t.asciiz " << symbol.initialValue << "\n";
+    }
+}
 
 std::string newLabel()
 {
@@ -95,7 +139,7 @@ void emitIfEnd()
 
 void addSymbol(const std::string &name, DataType type)
 {
-    symbols.insert({name, Symbol{type}});
+    symbols.insert({name, Symbol{type, ""}});
 }
 
 DataType getVariableType(const std::string &name)
@@ -126,12 +170,47 @@ DataType resultType(const Operand &left, const Operand &right)
     exit(1);
 }
 
+void loadToFloatRegister(const Operand &op, const std::string &reg)
+{
+    code.push_back("l.s " + reg + ", " + op.value);
+}
+
 void loadToRegister(const Operand &op, const std::string &reg)
 {
     if (op.kind == OperandKind::CONSTANT)
         code.push_back("li " + reg + ", " + op.value);
     else
         code.push_back("lw " + reg + ", " + op.value);
+}
+
+void emitAssignment(const std::string &name, const Operand &value)
+{
+    if (value.type == DataType::STRING)
+    {
+        std::println("Bison ERR: Assigning to string is not supported");
+        exit(1);
+    }
+    auto it = symbols.find(name);
+    if (it != symbols.end() && it->second.type != value.type)
+    {
+        std::println("Bison ERR: Cannot assign a value of a different type to '{}'", name);
+        exit(1);
+    }
+    addSymbol(name, value.type);
+
+    switch (value.type)
+    {
+        case DataType::INT:
+            loadToRegister(value, "$t0");
+            code.push_back("sw $t0, " + name);
+            break;
+        case DataType::REAL:
+            loadToFloatRegister(value, "$f0");
+            code.push_back("s.s $f0, " + name);
+            break;
+        default:
+            std::println("Bison ERR: emitAssignment() unsupported data type");
+    }
 }
 
 void emitTriple(const std::string &asmOp)
@@ -145,10 +224,24 @@ void emitTriple(const std::string &asmOp)
     Operand result{OperandKind::TEMPORARY, type, newTemp(type)};
     valueStack.push(result);
 
-    loadToRegister(leftArg, "$t0");
-    loadToRegister(rightArg, "$t1");
-    code.push_back(asmOp + " $t0, $t0, $t1");
-    code.push_back("sw $t0, " + result.value);
+    switch (type)
+    {
+        case DataType::INT:
+            loadToRegister(leftArg, "$t0");
+            loadToRegister(rightArg, "$t1");
+            code.push_back(asmOp + " $t0, $t0, $t1");
+            code.push_back("sw $t0, " + result.value);
+            break;
+        case DataType::REAL:
+            loadToFloatRegister(leftArg, "$f0");
+            loadToFloatRegister(rightArg, "$f1");
+            code.push_back(asmOp + ".s $f0, $f0, $f1");
+            code.push_back("s.s $f0, " + result.value);
+            break;
+        default:
+            std::println("Bison emitTriple error, unsupported datatype");
+            exit(1);
+    }
 
     std::println("Bison: {} = {} {} {}", result.value, leftArg.value, asmOp, rightArg.value);
 }
@@ -159,26 +252,26 @@ void emitPrint(const Operand &op)
     {
         case DataType::INT:
             loadToRegister(op, "$a0");
-            code.push_back("li $v0, 1");
+            code.emplace_back("li $v0, 1");
             break;
         case DataType::REAL:
             code.push_back("l.s $f12, " + op.value);
-            code.push_back("li $v0, 2");
+            code.emplace_back("li $v0, 2");
             break;
         case DataType::STRING:
             code.push_back("la $a0, " + op.value);
-            code.push_back("li $v0, 4");
+            code.emplace_back("li $v0, 4");
             break;
     }
-    code.push_back("syscall");
+    code.emplace_back("syscall");
 }
 
 void emitPrintln(const Operand &op)
 {
     emitPrint(op);
-    code.push_back("li $a0, 10");
-    code.push_back("li $v0, 11");
-    code.push_back("syscall");
+    code.emplace_back("li $a0, 10");
+    code.emplace_back("li $v0, 11");
+    code.emplace_back("syscall");
 }
 
 void emitRead(const std::string &name)
@@ -187,17 +280,17 @@ void emitRead(const std::string &name)
     switch (type)
     {
         case DataType::INT:
-            code.push_back("li $v0, 5");
-            code.push_back("syscall");
+            code.emplace_back("li $v0, 5");
+            code.emplace_back("syscall");
             code.push_back("sw $v0, " + name);
             break;
         case DataType::REAL:
-            code.push_back("li $v0, 6");
-            code.push_back("syscall");
+            code.emplace_back("li $v0, 6");
+            code.emplace_back("syscall");
             code.push_back("s.s $f0, " + name);
             break;
         case DataType::STRING:
-            std::println("Bison ERR: Read to string is not sopported\n");
+            std::println("Bison ERR: Read to string is not supported\n");
             exit(1);
             break;
     }
